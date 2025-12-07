@@ -1,33 +1,51 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import React from 'react';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        tabBarActiveTintColor: '#4F46E5',
+      }}
+    >
       <Tabs.Screen
-        name="index"
+        name="dashboard"            // harus sama persis dengan nama file dashboard.tsx
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Dashboard',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" color={color} size={size} />
+          ),
         }}
       />
+
       <Tabs.Screen
-        name="explore"
+        name="income"               // income.tsx
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Income',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cash-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="expense"              // expense.tsx
+        options={{
+          title: 'Expense',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="card-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="installment"          // installment.tsx
+        options={{
+          title: 'Cicilan',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="albums-outline" color={color} size={size} />
+          ),
         }}
       />
     </Tabs>
