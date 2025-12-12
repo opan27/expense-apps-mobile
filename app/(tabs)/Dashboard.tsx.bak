@@ -1,0 +1,1580 @@
+// app/(tabs)/dashboard.tsx
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Easing,
+    Pressable,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { BarChart, PieChart } from 'react-native-chart-kit';
+import api from '../api/client';
+
+type LatestTx = {
+    id?: number;
+    type: 'income' | 'expense' | 'installment';
+    category: string;
+    amount: number;
+    date: string;
+};
+
+type DashboardSummary = {
+    totalBalance?: number;
+    totalIncome: number;
+    totalExpense: number;
+    latest?: LatestTx[];
+    installmentSummary?: {
+        totalThisMonth: number;
+        remainingBalance: number;
+        status: 'OK' | 'WARNING';
+    };
+    userName?: string;
+};
+
+type CategoryRow = {
+    category: string;
+    amount: number;
+};
+
+type BillsSummary = {
+    status: 'ok' | 'warning';
+    totalMinimum: number;
+    balanceAfterMinimum: number;
+    message?: string;
+    messages?: string;
+};
+
+type UpcomingInstallment = {
+    id: number;
+    name: string;
+    dueDay: number;
+    remainingMonths: number;
+    monthlyPayment: number;
+};
+
+const screenWidth = Dimensions.get('window').width;
+
+const baseChartConfig = {
+    backgroundGradientFrom: '#ffffff',
+    backgroundGradientTo: '#ffffff',
+    color: (opacity = 1) => `rgba(79, 70, 229, ${opacity})`,
+    labelColor: (opacity = 1) => `rgba(75, 85, 99, ${opacity})`,
+    decimalPlaces: 0,
+};
+
+const incomeColors = ['#9333EA', '#6366F1', '#3B82F6', '#0EA5E9', '#06B6D4'];
+const expenseColors = ['#F97373', '#FB923C', '#FBBF24', '#FDE047', '#A3E635'];
+
+const safeNumber = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+};
+
+export default function Dashboard() {
+    const router = useRouter();
+    const [loading, setLoading] = useState(true);
+    const [extraLoading, setExtraLoading] = useState(true);
+
+    const [summary, setSummary] = useState<DashboardSummary | null>(null);
+    const [userName, setUserName] = useState<string>('User');
+
+    const [incomeCategories, setIncomeCategories] = useState<CategoryRow[]>([]);
+    const [expenseCategories, setExpenseCategories] = useState<CategoryRow[]>([]);
+    const [recentIncome, setRecentIncome] = useState<LatestTx[]>([]);
+    const [recentExpense, setRecentExpense] = useState<LatestTx[]>([]);
+    const [billsSummary, setBillsSummary] = useState<BillsSummary | null>(null);
+    const [upcomingInstallments, setUpcomingInstallments] = useState<
+        UpcomingInstallment[]
+    >([]);
+
+    const [incomeChartType, setIncomeChartType] = useState<'pie' | 'bar'>('pie');
+    const [expenseChartType, setExpenseChartType] = useState<'pie' | 'bar'>('bar');
+
+    const [selectedCategory, setSelectedCategory] = useState<any | null>(null);
+    const [modalType, setModalType] = useState<'income' | 'expense' | null>(null);
+
+    const [openMenu, setOpenMenu] = useState(false);
+    const slideX = useRef(new Animated.Value(-300)).current;
+
+    // compute bar widths here (after state exists)
+    const barBaseWidth = screenWidth - 40;
+    const barWidthIncome = Math.max(incomeCategories.length * 80, barBaseWidth);
+    const barWidthExpense = Math.max(expenseCategories.length * 80, barBaseWidth);
+
+    const openDrawer = () => {
+        setOpenMenu(true);
+        Animated.timing(slideX, {
+            toValue: 0,
+            duration: 250,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const closeDrawer = () => {
+        Animated.timing(slideX, {
+            toValue: -300,
+            duration: 250,
+            easing: Easing.in(Easing.ease),
+            useNativeDriver: true,
+        }).start(() => setOpenMenu(false));
+    };
+
+    useEffect(() => {
+        const loadDashboard = async () => {
+            try {
+                const token = await AsyncStorage.getItem('token');
+                if (!token) {
+                    router.replace('/');
+                    return;
+                }
+
+                const res = await api.get('/api/dashboard', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+
+                setSummary(res.data);
+
+                if (res.data.userName) {
+                    setUserName(res.data.userName);
+                } else {
+                    const storedName = await AsyncStorage.getItem('userName');
+                    if (storedName) setUserName(storedName);
+                }
+            } catch (err: any) {
+                console.log('dashboard error:', err.response?.data || err.message);
+                Alert.alert('Error', 'Gagal mengambil data dashboard');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadDashboard();
+    }, [router]);
+
+    useEffect(() => {
+        const loadExtras = async () => {
+            try {
+                const token = await AsyncStorage.getItem('token');
+                if (!token) return;
+
+                const headers = { Authorization: `Bearer ${token}` };
+
+                const [inc, exp, bills, upInst] = await Promise.all([
+                    api.get('/api/income/summary', { headers }),
+                    api.get('/api/expense/summary', { headers }),
+                    api.get('/api/bills/recommendations', { headers }),
+                    api.get('/api/installments/upcoming', { headers }),
+                ]);
+
+                setRecentIncome(
+                    (inc.data?.recent || inc.data?.recentRows || []).slice(0, 5),
+                );
+                setIncomeCategories(inc.data?.donutChart || []);
+
+                setRecentExpense(
+                    (exp.data?.recent || exp.data?.recentRows || []).slice(0, 5),
+                );
+                setExpenseCategories(exp.data?.donutChart || []);
+
+                setBillsSummary(bills.data || null);
+                setUpcomingInstallments(upInst.data || []);
+            } catch (e: any) {
+                console.log('dashboard extras error:', e.response?.data || e.message);
+            } finally {
+                setExtraLoading(false);
+            }
+        };
+
+        loadExtras();
+    }, []);
+
+    const handleNavigate = (path: any) => {
+        closeDrawer();
+        router.replace(path);
+    };
+
+    const handleLogout = async () => {
+        closeDrawer();
+        await AsyncStorage.removeItem('token');
+        router.replace('/');
+    };
+
+    if (loading || !summary) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator />
+            </View>
+        );
+    }
+
+    const totalBalance =
+        typeof summary.totalBalance === 'number'
+            ? summary.totalBalance
+            : (summary.totalIncome || 0) - (summary.totalExpense || 0);
+
+    const initial = userName.trim().charAt(0).toUpperCase() || 'U';
+
+    const financialOverviewData = [
+        {
+            name: 'Saldo',
+            amount: safeNumber(totalBalance),
+            color: '#805AD5',
+            legendFontColor: '#4B5563',
+            legendFontSize: 11,
+        },
+        {
+            name: 'Pengeluaran',
+            amount: safeNumber(summary.totalExpense),
+            color: '#F56565',
+            legendFontColor: '#4B5563',
+            legendFontSize: 11,
+        },
+        {
+            name: 'Pemasukan',
+            amount: safeNumber(summary.totalIncome),
+            color: '#ED8936',
+            legendFontColor: '#4B5563',
+            legendFontSize: 11,
+        },
+    ];
+
+    const incomePieData = incomeCategories.map((c, idx) => ({
+        name: c.category || 'Lainnya',
+        amount: safeNumber(c.amount),
+        color: incomeColors[idx % incomeColors.length],
+        legendFontColor: '#4B5563',
+        legendFontSize: 11,
+    }));
+
+    const expensePieData = expenseCategories.map((c, idx) => ({
+        name: c.category || 'Lainnya',
+        amount: safeNumber(c.amount),
+        color: expenseColors[idx % expenseColors.length],
+        legendFontColor: '#4B5563',
+        legendFontSize: 11,
+    }));
+
+    const totalIncomeAll = incomeCategories.reduce(
+        (a, c) => a + safeNumber(c.amount),
+        0,
+    );
+    const totalExpenseAll = expenseCategories.reduce(
+        (a, c) => a + safeNumber(c.amount),
+        0,
+    );
+
+    const hasFinancialData = financialOverviewData.some((d) => d.amount > 0);
+    const hasIncomeData = incomePieData.some((d) => d.amount > 0);
+    const hasExpenseData = expensePieData.some((d) => d.amount > 0);
+
+    const formatRupiah = (n: number) =>
+        `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
+
+    const formatDateId = (iso: string) => {
+        if (!iso) return '-';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yy = d.getFullYear();
+        return `${dd}/${mm}/${yy}`;
+    };
+
+    const openCategoryModal = (type: 'income' | 'expense', index: number) => {
+        const src = type === 'income' ? incomeCategories : expenseCategories;
+        const total = type === 'income' ? totalIncomeAll : totalExpenseAll;
+        const cat = src[index];
+        if (!cat) return;
+
+        const sorted = src
+            .slice()
+            .sort((a, b) => safeNumber(b.amount) - safeNumber(a.amount));
+        const rank =
+            sorted.findIndex((c) => c.category === cat.category) + 1 || src.length;
+
+        setSelectedCategory({
+            ...cat,
+            percentage: total > 0 ? (safeNumber(cat.amount) / total) * 100 : 0,
+            rank,
+            totalCategories: src.length,
+        });
+        setModalType(type);
+    };
+
+    return (
+        <View style={{ flex: 1, backgroundColor: '#F3F4FF' }}>
+            {/* Header */}
+            <View
+                style={{
+                    paddingTop: 40,
+                    paddingHorizontal: 20,
+                    paddingBottom: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                }}
+            >
+                <TouchableOpacity
+                    onPress={openDrawer}
+                    style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 999,
+                        backgroundColor: '#4F46E5',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 14,
+                    }}
+                >
+                    <Ionicons name="person-outline" size={22} color="#FFF" />
+                </TouchableOpacity>
+
+                <View style={{ flex: 1 }}>
+                    <Text
+                        style={{
+                            fontSize: 28,
+                            fontWeight: '800',
+                            marginBottom: 4,
+                            paddingTop: 25,
+                        }}
+                    >
+                        Dashboard
+                    </Text>
+                    <Text style={{ fontSize: 14, color: '#6B7280' }}>
+                        Selamat datang kembali,{' '}
+                        <Text style={{ color: '#7C3AED', fontWeight: '600' }}>
+                            {userName}
+                        </Text>
+                        ! Berikut ringkasan keuangan Anda.
+                    </Text>
+                </View>
+            </View>
+
+            {/* Konten utama */}
+            <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+            >
+                {/* Summary Cards */}
+                <View
+                    style={{
+                        flexDirection: 'row',
+                        gap: 14,
+                        marginBottom: 20,
+                    }}
+                >
+                    {[
+                        {
+                            title: 'Total Saldo',
+                            value: totalBalance,
+                            bg: '#EDE9FE',
+                            color: '#6D28D9',
+                        },
+                        {
+                            title: 'Total Pemasukan',
+                            value: summary.totalIncome,
+                            bg: '#DCFCE7',
+                            color: '#166534',
+                        },
+                        {
+                            title: 'Total Pengeluaran',
+                            value: summary.totalExpense,
+                            bg: '#FEE2E2',
+                            color: '#B91C1C',
+                        },
+                    ].map((item, index) => (
+                        <View
+                            key={index}
+                            style={{
+                                flex: 1,
+                                backgroundColor: item.bg,
+                                padding: 14,
+                                borderRadius: 14,
+                                shadowColor: '#000',
+                                shadowOpacity: 0.08,
+                                shadowRadius: 4,
+                                elevation: 3,
+                            }}
+                        >
+                            <Text
+                                style={{ fontSize: 12, color: '#6B7280', marginBottom: 6 }}
+                            >
+                                {item.title}
+                            </Text>
+                            <Text
+                                style={{
+                                    fontSize: 18,
+                                    fontWeight: '700',
+                                    color: item.color,
+                                }}
+                            >
+                                {formatRupiah(item.value)}
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Grafik Keuangan (overview) */}
+                <View
+                    style={{
+                        backgroundColor: 'white',
+                        borderRadius: 14,
+                        padding: 16,
+                        marginBottom: 20,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.06,
+                        shadowRadius: 4,
+                        elevation: 2,
+                    }}
+                >
+                    <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 4 }}>
+                        Grafik Keuangan
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>
+                        Distribusi Saldo, Pengeluaran, dan Pemasukan Anda.
+                    </Text>
+
+                    {!hasFinancialData ? (
+                        <View
+                            style={{
+                                alignItems: 'center',
+                                paddingVertical: 24,
+                            }}
+                        >
+                            <View
+                                style={{
+                                    width: 64,
+                                    height: 64,
+                                    borderRadius: 999,
+                                    backgroundColor: '#E5E7EB',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginBottom: 8,
+                                }}
+                            >
+                                <Ionicons name="pie-chart-outline" size={30} color="#9CA3AF" />
+                            </View>
+                            <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                                Belum ada data.
+                            </Text>
+                        </View>
+                    ) : (
+                        <PieChart
+                            data={financialOverviewData}
+                            width={screenWidth - 40}
+                            height={220}
+                            accessor="amount"
+                            backgroundColor="transparent"
+                            chartConfig={baseChartConfig}
+                            paddingLeft="0"
+                            hasLegend={true}
+                        />
+                    )}
+                </View>
+
+                {/* Analisis Kategori */}
+                <View style={{ marginBottom: 20 }}>
+                    <View style={{ marginBottom: 20 }}>
+                        {/* Pemasukan per Kategori */}
+                        <View
+                            style={{
+                                backgroundColor: 'white',
+                                borderRadius: 14,
+                                padding: 16,
+                                marginBottom: 14,
+                                shadowColor: '#000',
+                                shadowOpacity: 0.06,
+                                shadowRadius: 4,
+                                elevation: 2,
+                            }}
+                        >
+                            <View
+                                style={{
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    marginBottom: 4,
+                                    alignItems: 'center',
+                                }}
+                            >
+                                <View>
+                                    <Text
+                                        style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}
+                                    >
+                                        Pemasukan per Kategori
+                                    </Text>
+                                    <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                        Klik segmen untuk melihat detail.
+                                    </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row' }}>
+                                    <TouchableOpacity
+                                        onPress={() => setIncomeChartType('pie')}
+                                        style={{
+                                            padding: 6,
+                                            borderRadius: 999,
+                                            marginRight: 6,
+                                            backgroundColor:
+                                                incomeChartType === 'pie' ? '#EDE9FE' : '#F3F4F6',
+                                        }}
+                                    >
+                                        <Ionicons
+                                            name="pie-chart-outline"
+                                            size={18}
+                                            color={incomeChartType === 'pie' ? '#7C3AED' : '#6B7280'}
+                                        />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => setIncomeChartType('bar')}
+                                        style={{
+                                            padding: 6,
+                                            borderRadius: 999,
+                                            backgroundColor:
+                                                incomeChartType === 'bar' ? '#EDE9FE' : '#F3F4F6',
+                                        }}
+                                    >
+                                        <Ionicons
+                                            name="stats-chart-outline"
+                                            size={18}
+                                            color={incomeChartType === 'bar' ? '#7C3AED' : '#6B7280'}
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            {!hasIncomeData ? (
+                                <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                                    Belum ada data pemasukan.
+                                </Text>
+                            ) : incomeChartType === 'pie' ? (
+                                {/* PIE versi (tekan legend untuk buka modal) */ }
+                                < PieChart
+  data={incomePieData}
+                            width={screenWidth - 40}
+                            height={220}
+                            accessor="amount"
+                            backgroundColor="transparent"
+                            chartConfig={{
+                                ...baseChartConfig,
+                                color: (o = 1) => `rgba(147, 51, 234, ${o})`,
+                            }}
+                            paddingLeft="0"
+                            hasLegend={false}
+/>
+
+                            {/* Legend custom - tekanable */}
+                            <View style={{ marginTop: 10 }}>
+                                {incomeCategories.map((c, idx) => (
+                                    <TouchableOpacity
+                                        key={`${c.category}-${idx}`}
+                                        onPress={() => openCategoryModal('income', idx)}
+                                        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
+                                    >
+                                        <View
+                                            style={{
+                                                width: 10,
+                                                height: 10,
+                                                borderRadius: 999,
+                                                backgroundColor: incomeColors[idx % incomeColors.length],
+                                                marginRight: 6,
+                                            }}
+                                        />
+                                        <Text style={{ fontSize: 11, color: '#111827' }} numberOfLines={1}>
+                                            {c.category}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* BAR versi (tambalan tipe yAxisLabel/yAxisSuffix + perbaikan color) */}
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 0 }}>
+                                <BarChart
+                                    style={{ marginTop: 8 }}
+                                    data={{
+                                        labels: incomeCategories.map((c) => c.category),
+                                        datasets: [{ data: incomeCategories.map((c) => safeNumber(c.amount)) }],
+                                    }}
+                                    width={barWidthIncome}
+                                    height={220}
+                                    fromZero
+                                    showValuesOnTopOfBars={false}
+                                    verticalLabelRotation={45}
+                                    yAxisLabel={''}
+                                    yAxisSuffix={''}
+                                    chartConfig={{
+                                        ...baseChartConfig,
+                                        color: (o = 1) => `rgba(147, 51, 234, ${o})`,
+                                    }}
+                                />
+                            </ScrollView>
+                            )}
+                        </View>
+
+                        {/* Pengeluaran per Kategori */}
+                        <View
+                            style={{
+                                backgroundColor: 'white',
+                                borderRadius: 14,
+                                padding: 16,
+                                shadowColor: '#000',
+                                shadowOpacity: 0.06,
+                                shadowRadius: 4,
+                                elevation: 2,
+                            }}
+                        >
+                            <View
+                                style={{
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    marginBottom: 4,
+                                    alignItems: 'center',
+                                }}
+                            >
+                                <View>
+                                    <Text
+                                        style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}
+                                    >
+                                        Pengeluaran per Kategori
+                                    </Text>
+                                    <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                        Klik segmen untuk melihat detail.
+                                    </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row' }}>
+                                    <TouchableOpacity
+                                        onPress={() => setExpenseChartType('pie')}
+                                        style={{
+                                            padding: 6,
+                                            borderRadius: 999,
+                                            marginRight: 6,
+                                            backgroundColor:
+                                                expenseChartType === 'pie' ? '#FEE2E2' : '#F3F4F6',
+                                        }}
+                                    >
+                                        <Ionicons
+                                            name="pie-chart-outline"
+                                            size={18}
+                                            color={expenseChartType === 'pie' ? '#DC2626' : '#6B7280'}
+                                        />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => setExpenseChartType('bar')}
+                                        style={{
+                                            padding: 6,
+                                            borderRadius: 999,
+                                            backgroundColor:
+                                                expenseChartType === 'bar' ? '#FEE2E2' : '#F3F4F6',
+                                        }}
+                                    >
+                                        <Ionicons
+                                            name="stats-chart-outline"
+                                            size={18}
+                                            color={expenseChartType === 'bar' ? '#DC2626' : '#6B7280'}
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            {!hasExpenseData ? (
+                                <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                                    Belum ada data pengeluaran.
+                                </Text>
+                            ) : expenseChartType === 'pie' ? (
+                                {/* PIE versi (tekan legend untuk buka modal) */ }
+                                < PieChart
+  data={expensePieData}
+                            width={screenWidth - 40}
+                            height={220}
+                            accessor="amount"
+                            backgroundColor="transparent"
+                            chartConfig={{
+                                ...baseChartConfig,
+                                color: (o = 1) => `rgba(248, 113, 113, ${o})`,
+                            }}
+                            paddingLeft="0"
+                            hasLegend={false}
+/>
+
+                            {/* Legend custom - tekanable */}
+                            <View style={{ marginTop: 10 }}>
+                                {expenseCategories.map((c, idx) => (
+                                    <TouchableOpacity
+                                        key={`${c.category}-${idx}`}
+                                        onPress={() => openCategoryModal('expense', idx)}
+                                        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
+                                    >
+                                        <View
+                                            style={{
+                                                width: 10,
+                                                height: 10,
+                                                borderRadius: 999,
+                                                backgroundColor: expenseColors[idx % expenseColors.length],
+                                                marginRight: 6,
+                                            }}
+                                        />
+                                        <Text style={{ fontSize: 11, color: '#111827' }} numberOfLines={1}>
+                                            {c.category}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* BAR versi (tambalan tipe yAxisLabel/yAxisSuffix + perbaikan color) */}
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                <BarChart
+                                    data={{
+                                        labels: expenseCategories.map((c) => c.category),
+                                        datasets: [{ data: expenseCategories.map((c) => safeNumber(c.amount)) }],
+                                    }}
+                                    width={barWidthExpense}
+                                    height={220}
+                                    fromZero
+                                    verticalLabelRotation={45}
+                                    showValuesOnTopOfBars={false}
+                                    yAxisLabel={''}
+                                    yAxisSuffix={''}
+                                    chartConfig={{
+                                        ...baseChartConfig,
+                                        color: (o = 1) => `rgba(248, 113, 113, ${o})`,
+                                    }}
+                                />
+                            </ScrollView>
+                            )}
+                        </View>
+                    </View>
+                </View>
+
+                {/* Ringkasan Cicilan (billsSummary) */}
+                <View
+                    style={{
+                        backgroundColor: '#FFFFFF',
+                        padding: 16,
+                        borderRadius: 14,
+                        marginBottom: 20,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.08,
+                        shadowRadius: 4,
+                        elevation: 3,
+                    }}
+                >
+                    <View
+                        style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            marginBottom: 8,
+                        }}
+                    >
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text
+                                style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}
+                            >
+                                Manajemen Cicilan
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                Cicilan bulan ini dan sisa saldo Anda.
+                            </Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => router.replace('/(tabs)/installment')}
+                            style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                backgroundColor: '#7C3AED',
+                                borderRadius: 999,
+                            }}
+                        >
+                            <Text
+                                style={{
+                                    fontSize: 12,
+                                    color: 'white',
+                                    fontWeight: '600',
+                                }}
+                            >
+                                Kelola Cicilan
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {extraLoading && !billsSummary ? (
+                        <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                            Memuat ringkasan cicilan...
+                        </Text>
+                    ) : billsSummary ? (
+                        <View>
+                            <View
+                                style={{
+                                    padding: 10,
+                                    borderRadius: 10,
+                                    backgroundColor:
+                                        billsSummary.status === 'warning' ? '#FEE2E2' : '#ECFDF3',
+                                    borderWidth: 1,
+                                    borderColor:
+                                        billsSummary.status === 'warning' ? '#FCA5A5' : '#BBF7D0',
+                                    marginBottom: 8,
+                                }}
+                            >
+                                <Text
+                                    style={{
+                                        fontSize: 12,
+                                        color:
+                                            billsSummary.status === 'warning'
+                                                ? '#B91C1C'
+                                                : '#166534',
+                                        marginBottom: 4,
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    Total cicilan bulan ini:{' '}
+                                    {formatRupiah(billsSummary.totalMinimum)}
+                                </Text>
+                                <Text
+                                    style={{
+                                        fontSize: 12,
+                                        color:
+                                            billsSummary.status === 'warning'
+                                                ? '#B91C1C'
+                                                : '#166534',
+                                    }}
+                                >
+                                    Sisa saldo setelah bayar minimum:{' '}
+                                    {formatRupiah(billsSummary.balanceAfterMinimum)}
+                                </Text>
+                            </View>
+                            {!!(billsSummary.message || billsSummary.messages) && (
+                                <View
+                                    style={{
+                                        padding: 8,
+                                        borderRadius: 8,
+                                        backgroundColor:
+                                            billsSummary.status === 'warning'
+                                                ? '#FEE2E2'
+                                                : '#DCFCE7',
+                                    }}
+                                >
+                                    <Text
+                                        style={{
+                                            fontSize: 12,
+                                            color:
+                                                billsSummary.status === 'warning'
+                                                    ? '#B91C1C'
+                                                    : '#166534',
+                                        }}
+                                    >
+                                        {billsSummary.message || billsSummary.messages}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    ) : (
+                        <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                            Belum ada ringkasan cicilan.
+                        </Text>
+                    )}
+                </View>
+
+                {/* Cicilan Jatuh Tempo */}
+                <View
+                    style={{
+                        backgroundColor: 'white',
+                        padding: 16,
+                        borderRadius: 14,
+                        marginBottom: 20,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.06,
+                        shadowRadius: 4,
+                        elevation: 2,
+                    }}
+                >
+                    <View
+                        style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            marginBottom: 8,
+                        }}
+                    >
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text
+                                style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}
+                            >
+                                Cicilan Jatuh Tempo
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                Cicilan yang mendekati jatuh tempo.
+                            </Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => router.replace('/(tabs)/installment')}
+                            style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                backgroundColor: '#F97316',
+                                borderRadius: 999,
+                            }}
+                        >
+                            <Text
+                                style={{
+                                    fontSize: 12,
+                                    color: 'white',
+                                    fontWeight: '600',
+                                }}
+                            >
+                                Lihat Semua
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {upcomingInstallments.length === 0 ? (
+                        <View
+                            style={{
+                                alignItems: 'center',
+                                paddingVertical: 16,
+                            }}
+                        >
+                            <View
+                                style={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 999,
+                                    backgroundColor: '#E5E7EB',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginBottom: 6,
+                                }}
+                            >
+                                <Ionicons name="layers-outline" size={24} color="#9CA3AF" />
+                            </View>
+                            <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                                Tidak ada cicilan jatuh tempo.
+                            </Text>
+                        </View>
+                    ) : (
+                        upcomingInstallments.map((item) => (
+                            <View
+                                key={item.id}
+                                style={{
+                                    padding: 10,
+                                    borderRadius: 10,
+                                    backgroundColor: '#F9FAFB',
+                                    borderWidth: 1,
+                                    borderColor: '#E5E7EB',
+                                    marginBottom: 8,
+                                }}
+                            >
+                                <View
+                                    style={{
+                                        flexDirection: 'row',
+                                        justifyContent: 'space-between',
+                                        marginBottom: 4,
+                                    }}
+                                >
+                                    <View style={{ flex: 1, paddingRight: 8 }}>
+                                        <Text
+                                            style={{
+                                                fontSize: 13,
+                                                fontWeight: '600',
+                                                color: '#111827',
+                                                marginBottom: 2,
+                                            }}
+                                        >
+                                            {item.name}
+                                        </Text>
+                                        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                                            <Text
+                                                style={{
+                                                    fontSize: 11,
+                                                    color: '#9CA3AF',
+                                                    marginRight: 6,
+                                                }}
+                                            >
+                                                Tgl {item.dueDay}
+                                            </Text>
+                                            <Text
+                                                style={{
+                                                    fontSize: 11,
+                                                    color: '#6B7280',
+                                                    marginRight: 6,
+                                                }}
+                                            >
+                                                {item.remainingMonths} bln
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <Text
+                                            style={{
+                                                fontSize: 12,
+                                                fontWeight: '600',
+                                                color: '#16A34A',
+                                            }}
+                                        >
+                                            {formatRupiah(item.monthlyPayment)}
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: '#6B7280' }}>
+                                            per bulan
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                <TouchableOpacity
+                                    onPress={() =>
+                                        router.replace(
+                                            `/expense-add?installment_id=${item.id}`,
+                                        )
+                                    }
+                                    style={{
+                                        marginTop: 6,
+                                        alignSelf: 'flex-start',
+                                        paddingHorizontal: 12,
+                                        paddingVertical: 6,
+                                        borderRadius: 999,
+                                        backgroundColor: '#7C3AED',
+                                    }}
+                                >
+                                    <Text
+                                        style={{
+                                            fontSize: 12,
+                                            color: 'white',
+                                            fontWeight: '600',
+                                        }}
+                                    >
+                                        Bayar
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        ))
+                    )}
+                </View>
+
+                {/* Aktivitas Terkini */}
+                <View
+                    style={{
+                        backgroundColor: 'white',
+                        padding: 16,
+                        borderRadius: 14,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.08,
+                        shadowRadius: 4,
+                        elevation: 3,
+                        marginBottom: 20,
+                    }}
+                >
+                    <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12 }}>
+                        Aktivitas Terkini
+                    </Text>
+
+                    {Array.isArray(summary.latest) && summary.latest.length > 0 ? (
+                        summary.latest.map((tx: any, index: number) => (
+                            <View
+                                key={tx.id ?? index}
+                                style={{
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    marginBottom: 10,
+                                }}
+                            >
+                                <View>
+                                    <Text
+                                        style={{ fontWeight: '600', marginBottom: 2 }}
+                                        numberOfLines={1}
+                                    >
+                                        {tx.category}
+                                    </Text>
+                                    <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                        {formatDateId(tx.date)}
+                                    </Text>
+                                </View>
+
+                                <Text
+                                    style={{
+                                        fontWeight: '700',
+                                        color: tx.type === 'income' ? '#16A34A' : '#DC2626',
+                                    }}
+                                >
+                                    {tx.type === 'income' ? '+ ' : '- '}
+                                    {formatRupiah(tx.amount)}
+                                </Text>
+                            </View>
+                        ))
+                    ) : (
+                        <Text style={{ color: '#6B7280' }}>Belum ada transaksi.</Text>
+                    )}
+                </View>
+
+                {/* Pengeluaran Terbaru & Pemasukan Terbaru */}
+                <View
+                    style={{
+                        flexDirection: 'column',
+                        gap: 16,
+                        marginBottom: 10,
+                    }}
+                >
+                    {/* Pengeluaran Terbaru */}
+                    <View
+                        style={{
+                            backgroundColor: 'white',
+                            padding: 16,
+                            borderRadius: 14,
+                            shadowColor: '#000',
+                            shadowOpacity: 0.06,
+                            shadowRadius: 4,
+                            elevation: 2,
+                        }}
+                    >
+                        <View
+                            style={{
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                marginBottom: 8,
+                            }}
+                        >
+                            <View>
+                                <Text
+                                    style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}
+                                >
+                                    Pengeluaran Terbaru
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                    Aktivitas pengeluaran terkini.
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                onPress={() => router.replace('/(tabs)/expense')}
+                                style={{
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 6,
+                                    borderRadius: 999,
+                                    backgroundColor: '#EF4444',
+                                }}
+                            >
+                                <Text
+                                    style={{
+                                        fontSize: 12,
+                                        color: 'white',
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    Lihat Semua
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {recentExpense.length === 0 ? (
+                            <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                                Belum ada pengeluaran.
+                            </Text>
+                        ) : (
+                            recentExpense.map((exp, idx) => (
+                                <View
+                                    key={exp.id ?? idx}
+                                    style={{
+                                        flexDirection: 'row',
+                                        justifyContent: 'space-between',
+                                        marginBottom: 8,
+                                    }}
+                                >
+                                    <View style={{ flex: 1, paddingRight: 8 }}>
+                                        <Text
+                                            style={{
+                                                fontSize: 13,
+                                                fontWeight: '600',
+                                                color: '#111827',
+                                            }}
+                                            numberOfLines={1}
+                                        >
+                                            {exp.category}
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: '#6B7280' }}>
+                                            {formatDateId(exp.date)}
+                                        </Text>
+                                    </View>
+                                    <Text
+                                        style={{
+                                            fontSize: 13,
+                                            fontWeight: '700',
+                                            color: '#DC2626',
+                                        }}
+                                    >
+                                        - {formatRupiah(exp.amount)}
+                                    </Text>
+                                </View>
+                            ))
+                        )}
+                    </View>
+
+                    {/* Pemasukan Terbaru */}
+                    <View
+                        style={{
+                            backgroundColor: 'white',
+                            padding: 16,
+                            borderRadius: 14,
+                            shadowColor: '#000',
+                            shadowOpacity: 0.06,
+                            shadowRadius: 4,
+                            elevation: 2,
+                        }}
+                    >
+                        <View
+                            style={{
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                marginBottom: 8,
+                            }}
+                        >
+                            <View>
+                                <Text
+                                    style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}
+                                >
+                                    Pemasukan Terbaru
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                    Aktivitas pemasukan terkini.
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                onPress={() => router.replace('/(tabs)/income')}
+                                style={{
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 6,
+                                    borderRadius: 999,
+                                    backgroundColor: '#16A34A',
+                                }}
+                            >
+                                <Text
+                                    style={{
+                                        fontSize: 12,
+                                        color: 'white',
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    Lihat Semua
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {recentIncome.length === 0 ? (
+                            <Text style={{ color: '#9CA3AF', fontSize: 12 }}>
+                                Belum ada pemasukan.
+                            </Text>
+                        ) : (
+                            recentIncome.map((inc, idx) => (
+                                <View
+                                    key={inc.id ?? idx}
+                                    style={{
+                                        flexDirection: 'row',
+                                        justifyContent: 'space-between',
+                                        marginBottom: 8,
+                                    }}
+                                >
+                                    <View style={{ flex: 1, paddingRight: 8 }}>
+                                        <Text
+                                            style={{
+                                                fontSize: 13,
+                                                fontWeight: '600',
+                                                color: '#111827',
+                                            }}
+                                            numberOfLines={1}
+                                        >
+                                            {inc.category}
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: '#6B7280' }}>
+                                            {formatDateId(inc.date)}
+                                        </Text>
+                                    </View>
+                                    <Text
+                                        style={{
+                                            fontSize: 13,
+                                            fontWeight: '700',
+                                            color: '#16A34A',
+                                        }}
+                                    >
+                                        {formatRupiah(inc.amount)}
+                                    </Text>
+                                </View>
+                            ))
+                        )}
+                    </View>
+                </View>
+            </ScrollView>
+
+            {/* Modal Analisis Kategori */}
+            {selectedCategory && modalType && (
+                <View
+                    style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'white',
+                        padding: 16,
+                        borderTopLeftRadius: 20,
+                        borderTopRightRadius: 20,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.2,
+                        shadowRadius: 8,
+                        elevation: 10,
+                    }}
+                >
+                    <View
+                        style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            marginBottom: 8,
+                        }}
+                    >
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>
+                                {selectedCategory.category}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                Kategori {modalType === 'income' ? 'Pemasukan' : 'Pengeluaran'}
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setSelectedCategory(null)}>
+                            <Ionicons name="close" size={20} color="#6B7280" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View
+                        style={{
+                            backgroundColor: modalType === 'income' ? '#F5F3FF' : '#FEF2F2',
+                            padding: 14,
+                            borderRadius: 12,
+                            marginBottom: 12,
+                        }}
+                    >
+                        <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>
+                            Total Jumlah
+                        </Text>
+                        <Text
+                            style={{
+                                fontSize: 20,
+                                fontWeight: '800',
+                                color: modalType === 'income' ? '#7C3AED' : '#DC2626',
+                            }}
+                        >
+                            {modalType === 'income' ? '+' : '-'}
+                            {formatRupiah(selectedCategory.amount)}
+                        </Text>
+                    </View>
+
+                    <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 6 }}>
+                        Persentase dari Total {modalType === 'income' ? 'Pemasukan' : 'Pengeluaran'}
+                    </Text>
+                    <View
+                        style={{
+                            height: 8,
+                            borderRadius: 999,
+                            backgroundColor: '#E5E7EB',
+                            overflow: 'hidden',
+                            marginBottom: 6,
+                        }}
+                    >
+                        <View
+                            style={{
+                                height: '100%',
+                                width: `${selectedCategory.percentage.toFixed(1)}%`,
+                                backgroundColor: modalType === 'income' ? '#7C3AED' : '#DC2626',
+                            }}
+                        />
+                    </View>
+                    <Text style={{ fontSize: 12, fontWeight: '600', textAlign: 'right' }}>
+                        {selectedCategory.percentage.toFixed(1)}%
+                    </Text>
+
+                    <View
+                        style={{
+                            flexDirection: 'row',
+                            marginTop: 12,
+                            marginBottom: 16,
+                        }}
+                    >
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                            <Text style={{ fontSize: 12, color: '#6B7280' }}>Peringkat Kategori</Text>
+                            <Text style={{ fontSize: 18, fontWeight: '700' }}>#{selectedCategory.rank}</Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 8 }}>
+                            <Text style={{ fontSize: 12, color: '#6B7280' }}>Total Kategori</Text>
+                            <Text style={{ fontSize: 18, fontWeight: '700' }}>{selectedCategory.totalCategories}</Text>
+                        </View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                setSelectedCategory(null);
+                                router.replace(
+                                    modalType === 'income' ? '/(tabs)/income' : '/(tabs)/expense',
+                                );
+                            }}
+                            style={{
+                                flex: 1,
+                                marginRight: 8,
+                                paddingVertical: 10,
+                                borderRadius: 999,
+                                backgroundColor: modalType === 'income' ? '#7C3AED' : '#DC2626',
+                                alignItems: 'center',
+                            }}
+                        >
+                            <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>
+                                Lihat Halaman {modalType === 'income' ? 'Pemasukan' : 'Pengeluaran'}
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setSelectedCategory(null)}
+                            style={{
+                                paddingVertical: 10,
+                                paddingHorizontal: 16,
+                                borderRadius: 999,
+                                borderWidth: 1,
+                                borderColor: '#D1D5DB',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
+                            <Text style={{ fontSize: 13, color: '#4B5563' }}>Tutup</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
+
+            {/* Sidebar slide dari kiri */}
+            {openMenu && (
+                <View
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        flexDirection: 'row',
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                    }}
+                >
+                    <Animated.View
+                        style={{
+                            width: '70%',
+                            backgroundColor: '#FFFFFF',
+                            paddingTop: 50,
+                            paddingHorizontal: 16,
+                            transform: [{ translateX: slideX }],
+                        }}
+                    >
+                        <View
+                            style={{
+                                alignItems: 'center',
+                                marginBottom: 32,
+                            }}
+                        >
+                            <View
+                                style={{
+                                    width: 80,
+                                    height: 80,
+                                    borderRadius: 999,
+                                    backgroundColor: '#EDE9FE',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginBottom: 8,
+                                }}
+                            >
+                                <Text
+                                    style={{
+                                        fontSize: 32,
+                                        fontWeight: '700',
+                                        color: '#7C3AED',
+                                    }}
+                                >
+                                    {initial}
+                                </Text>
+                            </View>
+                            <Text
+                                style={{
+                                    fontSize: 16,
+                                    fontWeight: '600',
+                                    color: '#111827',
+                                }}
+                            >
+                                {userName}
+                            </Text>
+                        </View>
+
+                        {[
+                            { label: 'Dashboard', path: '/(tabs)/dashboard', icon: 'grid-outline' },
+                            { label: 'Income', path: '/(tabs)/income', icon: 'wallet-outline' },
+                            { label: 'Expense', path: '/(tabs)/expense', icon: 'receipt-outline' },
+                            {
+                                label: 'Recommendation',
+                                path: '/recommended',
+                                icon: 'sparkles-outline',
+                            },
+                            { label: 'Cicilan', path: '/(tabs)/installment', icon: 'layers-outline' },
+                        ].map((item) => (
+                            <TouchableOpacity
+                                key={item.label}
+                                onPress={() => handleNavigate(item.path)}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 10,
+                                }}
+                            >
+                                <Ionicons
+                                    name={item.icon as any}
+                                    size={20}
+                                    color="#4B5563"
+                                    style={{ marginRight: 12 }}
+                                />
+                                <Text style={{ fontSize: 15, color: '#111827' }}>{item.label}</Text>
+                            </TouchableOpacity>
+                        ))}
+
+                        <View
+                            style={{
+                                height: 1,
+                                backgroundColor: '#E5E7EB',
+                                marginVertical: 16,
+                            }}
+                        />
+
+                        <TouchableOpacity
+                            onPress={handleLogout}
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                paddingVertical: 10,
+                                backgroundColor: '#FEE2E2',
+                                borderRadius: 10,
+                                paddingHorizontal: 10,
+                            }}
+                        >
+                            <Ionicons
+                                name="log-out-outline"
+                                size={20}
+                                color="#DC2626"
+                                style={{ marginRight: 10 }}
+                            />
+                            <Text
+                                style={{
+                                    fontSize: 15,
+                                    color: '#DC2626',
+                                    fontWeight: '600',
+                                }}
+                            >
+                                Logout
+                            </Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+
+                    <Pressable style={{ flex: 1 }} onPress={closeDrawer} />
+                </View>
+            )}
+        </View>
+    );
+}
