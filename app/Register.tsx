@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
@@ -16,32 +15,45 @@ import {
 } from 'react-native';
 import api from './api/client';
 
-export default function Login() {
+export default function Register() {
   const router = useRouter();
 
+  const nameRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
 
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [focused, setFocused] = useState<'email' | 'password' | null>(null);
+  const [focused, setFocused] = useState<'name' | 'email' | 'password' | null>(
+    null
+  );
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Email dan password wajib diisi');
+  const handleRegister = async () => {
+    if (!name || !email || !password) {
+      Alert.alert('Error', 'Nama, email, dan password wajib diisi');
       return;
     }
 
     try {
       setLoading(true);
-      const res = await api.post('/api/auth/login', { email, password });
-      const { token } = res.data;
-      await AsyncStorage.setItem('token', token);
-      router.replace('/dashboard');
+      await api.post('/api/auth/register', {
+        name,
+        email,
+        password,
+      });
+
+      Alert.alert('Berhasil 🎉', 'Registrasi sukses, silakan login', [
+        {
+          text: 'Login',
+          onPress: () => router.replace('/'),
+        },
+      ]);
     } catch (err: any) {
-      Alert.alert('Login gagal', 'Email atau password salah');
+      const msg = err?.response?.data?.error || 'Registrasi gagal';
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -52,7 +64,7 @@ export default function Login() {
       <ScrollView
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1 }} // penuh tinggi & bisa scroll
+        contentContainerStyle={{ flexGrow: 1 }}
       >
         <View style={styles.container}>
           {/* ATAS: header + card */}
@@ -60,18 +72,54 @@ export default function Login() {
             {/* HEADER */}
             <View style={styles.header}>
               <View style={styles.logoCircle}>
-                <Ionicons name="wallet-outline" size={40} color="#2563EB" />
+                <Ionicons
+                  name="person-add-outline"
+                  size={40}
+                  color="#16A34A"
+                />
               </View>
-              <Text style={styles.badgeText}>WELCOME BACK</Text>
-              <Text style={styles.title}>Expense Apps</Text>
+              <Text style={styles.badgeText}>GET STARTED</Text>
+              <Text style={styles.title}>Buat Akun Baru</Text>
               <Text style={styles.subtitle}>
-                Kelola keuanganmu dengan lebih rapi
+                Mulai kelola keuanganmu dengan rapi
               </Text>
             </View>
 
             {/* CARD */}
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Masuk ke akunmu</Text>
+              <Text style={styles.cardTitle}>Isi data dirimu</Text>
+
+              {/* NAMA */}
+              <View
+                style={[
+                  styles.inputWrapper,
+                  focused === 'name' && styles.inputWrapperFocused,
+                ]}
+              >
+                <View style={styles.inputLeft}>
+                  <Ionicons
+                    name="person-outline"
+                    size={20}
+                    color="#64748B"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Nama lengkap</Text>
+                  <TextInput
+                    ref={nameRef}
+                    placeholder="Nama lengkap"
+                    placeholderTextColor="#94A3B8"
+                    value={name}
+                    onChangeText={setName}
+                    style={styles.input}
+                    returnKeyType="next"
+                    autoFocus
+                    onFocus={() => setFocused('name')}
+                    onBlur={() => setFocused(null)}
+                    onSubmitEditing={() => emailRef.current?.focus()}
+                  />
+                </View>
+              </View>
 
               {/* EMAIL */}
               <View
@@ -95,7 +143,6 @@ export default function Login() {
                     keyboardType="email-address"
                     style={styles.input}
                     returnKeyType="next"
-                    autoFocus
                     onFocus={() => setFocused('email')}
                     onBlur={() => setFocused(null)}
                     onSubmitEditing={() => passwordRef.current?.focus()}
@@ -144,45 +191,33 @@ export default function Login() {
                 </TouchableOpacity>
               </View>
 
-              {/* FORGOT */}
-              <TouchableOpacity style={styles.forgotButton}>
-                <Text style={styles.forgotText}>Lupa password?</Text>
-              </TouchableOpacity>
-
               {/* BUTTON */}
               <TouchableOpacity
-                onPress={handleLogin}
+                onPress={handleRegister}
                 disabled={loading}
                 style={styles.button}
               >
                 {loading ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.buttonText}>Login</Text>
+                  <Text style={styles.buttonText}>Register</Text>
                 )}
               </TouchableOpacity>
 
-              {/* DIVIDER */}
-              <View style={styles.dividerRow}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>atau</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              {/* REGISTER */}
+              {/* LOGIN */}
               <TouchableOpacity
-                onPress={() => router.push('/Register')}
-                style={styles.register}
+                onPress={() => router.replace('/')}
+                style={styles.login}
               >
-                <Text style={styles.registerText}>
-                  Belum punya akun?{' '}
-                  <Text style={styles.registerLink}>Register</Text>
+                <Text style={styles.loginText}>
+                  Sudah punya akun?{' '}
+                  <Text style={styles.loginLink}>Login</Text>
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* BAWAH: footer nempel */}
+          {/* FOOTER */}
           <Text style={styles.footerText}>Expense Apps • v1.0.0</Text>
         </View>
       </ScrollView>
@@ -193,34 +228,34 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#E0EAFF',
     paddingHorizontal: 24,
     paddingTop: 56,
     paddingBottom: 16,
-    backgroundColor: '#E0EAFF',
-    justifyContent: 'space-between', // topSection & footer ke atas & bawah
+    justifyContent: 'space-between', // topSection dan footer nempel atas-bawah
   },
   topSection: {
-    // header + card sebagai blok atas
+    // header + card
   },
   header: {
     alignItems: 'center',
     marginBottom: 26,
   },
   logoCircle: {
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    backgroundColor: 'rgba(22, 163, 74, 0.1)',
     padding: 22,
     borderRadius: 999,
     marginBottom: 12,
   },
   badgeText: {
     fontSize: 12,
-    color: '#2563EB',
+    color: '#16A34A',
     fontWeight: '600',
     letterSpacing: 1,
     marginBottom: 4,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     color: '#0F172A',
   },
@@ -241,7 +276,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.12)',
+    borderColor: 'rgba(148,163,184,0.12)',
   },
   cardTitle: {
     fontSize: 16,
@@ -261,8 +296,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   inputWrapperFocused: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: '#16A34A',
+    backgroundColor: '#ECFDF3',
   },
   inputLeft: {
     marginTop: 8,
@@ -282,18 +317,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingLeft: 8,
   },
-  forgotButton: {
-    alignSelf: 'flex-end',
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  forgotText: {
-    fontSize: 12,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
   button: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#16A34A',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -304,31 +329,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  login: {
     marginTop: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E2E8F0',
-  },
-  dividerText: {
-    marginHorizontal: 8,
-    fontSize: 12,
-    color: '#94A3B8',
-  },
-  register: {
-    marginTop: 12,
     alignItems: 'center',
   },
-  registerText: {
+  loginText: {
     fontSize: 14,
     color: '#64748B',
   },
-  registerLink: {
-    color: '#2563EB',
+  loginLink: {
+    color: '#16A34A',
     fontWeight: '600',
   },
   footerText: {

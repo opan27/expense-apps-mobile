@@ -11,8 +11,10 @@ import {
     ScrollView,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
+
+
 import api from '../api/client';
 
 type IncomeItem = {

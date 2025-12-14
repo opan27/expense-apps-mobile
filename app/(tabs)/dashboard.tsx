@@ -62,6 +62,20 @@ type UpcomingInstallment = {
 };
 
 const screenWidth = Dimensions.get('window').width;
+const pillButton = {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 36, // biar tinggi konsisten
+};
+const pillButtonText = {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 13,
+};
 
 const baseChartConfig = {
     backgroundGradientFrom: '#ffffff',
@@ -267,7 +281,21 @@ export default function Dashboard() {
     const hasIncomeData = incomePieData.some((d) => d.amount > 0);
     const hasExpenseData = expensePieData.some((d) => d.amount > 0);
 
-    const formatRupiah = (n: number) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
+    const formatRupiah = (n: number) => {
+        const v = Number(n || 0);
+
+        if (v >= 1_000_000_000) {
+            return `Rp ${(v / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}M`; // 1.2M
+        }
+        if (v >= 1_000_000) {
+            return `Rp ${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}jt`;   // 35.6jt
+        }
+        if (v >= 1_000) {
+            return `Rp ${(v / 1_000).toFixed(1).replace(/\.0$/, '')}k`;        // 24.2k
+        }
+        return `Rp ${v.toLocaleString('id-ID')}`;
+    };
+
 
     const formatDateId = (iso: string) => {
         if (!iso) return '-';
@@ -299,56 +327,60 @@ export default function Dashboard() {
 
     return (
         <View style={{ flex: 1, backgroundColor: '#F3F4FF' }}>
-            {/* Header */}
-            <View
-                style={{
-                    paddingTop: 40,
-                    paddingHorizontal: 20,
-                    paddingBottom: 12,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                }}
+            <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
             >
-                <TouchableOpacity
-                    onPress={openDrawer}
+                {/* Header */}
+                <View
                     style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 999,
-                        backgroundColor: '#4F46E5',
+                        paddingTop: 40,
+                        paddingBottom: 12,
+                        flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 14,
                     }}
                 >
-                    <Ionicons name="person-outline" size={22} color="#FFF" />
-                </TouchableOpacity>
-
-                <View style={{ flex: 1 }}>
-                    <Text
+                    <TouchableOpacity
+                        onPress={openDrawer}
                         style={{
-                            fontSize: 28,
-                            fontWeight: '800',
-                            marginBottom: 4,
-                            paddingTop: 25,
+                            width: 40,
+                            height: 40,
+                            borderRadius: 999,
+                            backgroundColor: '#4F46E5',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: 14,
                         }}
                     >
-                        Dashboard
-                    </Text>
-                    <Text style={{ fontSize: 14, color: '#6B7280' }}>
-                        Selamat datang kembali,{' '}
-                        <Text style={{ color: '#7C3AED', fontWeight: '600' }}>{userName}</Text>! Berikut
-                        ringkasan keuangan Anda.
-                    </Text>
-                </View>
-            </View>
+                        <Ionicons name="person-outline" size={22} color="#FFF" />
+                    </TouchableOpacity>
 
-            {/* Konten utama */}
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}>
+                    <View style={{ flex: 1 }}>
+                        <Text
+                            style={{
+                                fontSize: 28,
+                                fontWeight: '800',
+                                marginBottom: 4,
+                                paddingTop: 25,
+                            }}
+                        >
+                            Dashboard
+                        </Text>
+                        <Text style={{ fontSize: 14, color: '#6B7280' }}>
+                            Selamat datang kembali,{' '}
+                            <Text style={{ color: '#7C3AED', fontWeight: '600' }}>{userName}</Text>! Berikut
+                            ringkasan keuangan Anda.
+                        </Text>
+                    </View>
+
+                </View>
+
+                {/* Konten utama */}
+
                 {/* Summary Cards */}
-                <View style={{ flexDirection: 'row', gap: 14, marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', gap: 14, marginBottom: 25 }}>
                     {[
-                        { title: 'Total Saldo', value: totalBalance, bg: '#EDE9FE', color: '#6D28D9' },
+                        { title: 'Total Saldo', value: totalBalance, bg: '#EDE9FE', color: '#6D28D9', },
                         { title: 'Total Pemasukan', value: summary.totalIncome, bg: '#DCFCE7', color: '#166534' },
                         { title: 'Total Pengeluaran', value: summary.totalExpense, bg: '#FEE2E2', color: '#B91C1C' },
                     ].map((item, index) => (
@@ -520,7 +552,7 @@ export default function Dashboard() {
                                             ],
                                         }}
                                         width={Math.max(incomeCategories.length * 80, screenWidth - 40)}
-                                        height={220}
+                                        height={550}
                                         fromZero
                                         showValuesOnTopOfBars={false}
                                         verticalLabelRotation={45}
@@ -544,8 +576,8 @@ export default function Dashboard() {
                                         >
                                             <View
                                                 style={{
-                                                    width: 10,
-                                                    height: 10,
+                                                    width: 20,
+                                                    height: 20,
                                                     borderRadius: 999,
                                                     backgroundColor:
                                                         incomeColors[idx % incomeColors.length],
@@ -628,7 +660,7 @@ export default function Dashboard() {
                                             expenseCategories.length * 80,
                                             screenWidth - 40,
                                         )}
-                                        height={220}
+                                        height={550}
                                         fromZero
                                         showValuesOnTopOfBars={false}
                                         verticalLabelRotation={45}
@@ -652,8 +684,8 @@ export default function Dashboard() {
                                         >
                                             <View
                                                 style={{
-                                                    width: 10,
-                                                    height: 10,
+                                                    width: 20,
+                                                    height: 20,
                                                     borderRadius: 999,
                                                     backgroundColor:
                                                         expenseColors[idx % expenseColors.length],
@@ -681,23 +713,36 @@ export default function Dashboard() {
                 {/* Ringkasan Cicilan (billsSummary) */}
                 < View
                     style={{
-                        backgroundColor: '#FFFFFF',
+                        backgroundColor: 'white',
                         padding: 16,
                         borderRadius: 14,
                         marginBottom: 20,
                         shadowColor: '#000',
-                        shadowOpacity: 0.08,
+                        shadowOpacity: 0.06,
                         shadowRadius: 4,
-                        elevation: 3,
+                        elevation: 2,
                     }}
                 >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <View style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 12,
+                    }}>
                         <View style={{ flex: 1, paddingRight: 8 }}>
-                            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>Manajemen Cicilan</Text>
-                            <Text style={{ fontSize: 12, color: '#6B7280' }}>Cicilan bulan ini dan sisa saldo Anda.</Text>
+                            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>Cicilan Jatuh Tempo</Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280' }}>Cicilan yang mendekati jatuh tempo.</Text>
                         </View>
-                        <TouchableOpacity onPress={() => router.replace('/(tabs)/installment')} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#7C3AED', borderRadius: 999 }}>
-                            <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>Kelola Cicilan</Text>
+                        <TouchableOpacity
+                            onPress={() => router.push('/installment')}
+                            style={[
+                                pillButton,
+                                { backgroundColor: '#4F46E5' },
+                            ]}
+                        >
+                            <Text style={pillButtonText}>
+                                Kelola Cicilan
+                            </Text>
                         </TouchableOpacity>
                     </View>
 
@@ -737,7 +782,6 @@ export default function Dashboard() {
                         )
                     }
                 </View >
-
                 {/* Cicilan Jatuh Tempo */}
                 < View
                     style={{
@@ -751,14 +795,28 @@ export default function Dashboard() {
                         elevation: 2,
                     }}
                 >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <View style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 12,
+                    }}>
                         <View style={{ flex: 1, paddingRight: 8 }}>
                             <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>Cicilan Jatuh Tempo</Text>
                             <Text style={{ fontSize: 12, color: '#6B7280' }}>Cicilan yang mendekati jatuh tempo.</Text>
                         </View>
-                        <TouchableOpacity onPress={() => router.replace('/(tabs)/installment')} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#F97316', borderRadius: 999 }}>
-                            <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>Lihat Semua</Text>
+                        <TouchableOpacity
+                            onPress={() => router.push('/installment')}
+                            style={[
+                                pillButton,
+                                { backgroundColor: '#edb04eff' },
+                            ]}
+                        >
+                            <Text style={pillButtonText}>
+                                Cek Cicilan
+                            </Text>
                         </TouchableOpacity>
+
                     </View>
 
                     {
@@ -824,14 +882,47 @@ export default function Dashboard() {
                 {/* Pengeluaran Terbaru & Pemasukan Terbaru */}
                 < View style={{ flexDirection: 'column', gap: 16, marginBottom: 10 }}>
                     {/* Pengeluaran Terbaru */}
-                    < View style={{ backgroundColor: 'white', padding: 16, borderRadius: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <View
+                        style={{
+                            backgroundColor: 'white',
+                            padding: 16,
+                            borderRadius: 14,
+                            shadowColor: '#000',
+                            shadowOpacity: 0.06,
+                            shadowRadius: 4,
+                            elevation: 2,
+                        }}
+                    >
+                        <View
+                            style={{
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: 8,
+                            }}
+                        >
                             <View>
-                                <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>Pengeluaran Terbaru</Text>
-                                <Text style={{ fontSize: 12, color: '#6B7280' }}>Aktivitas pengeluaran terkini.</Text>
+                                <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>
+                                    Pengeluaran Terbaru
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                    Aktivitas pengeluaran terkini.
+                                </Text>
                             </View>
-                            <TouchableOpacity onPress={() => router.replace('/(tabs)/expense')} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#EF4444' }}>
-                                <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>Lihat Semua</Text>
+
+                            <TouchableOpacity
+                                onPress={() => router.replace('/(tabs)/expense')}
+                                style={{
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 8,
+                                    borderRadius: 999,
+                                    backgroundColor: '#EF4444',
+                                }}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>
+                                    Lihat semua
+                                </Text>
                             </TouchableOpacity>
                         </View>
 
@@ -853,14 +944,47 @@ export default function Dashboard() {
                     </View >
 
                     {/* Pemasukan Terbaru */}
-                    < View style={{ backgroundColor: 'white', padding: 16, borderRadius: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <View
+                        style={{
+                            backgroundColor: 'white',
+                            padding: 16,
+                            borderRadius: 14,
+                            shadowColor: '#000',
+                            shadowOpacity: 0.06,
+                            shadowRadius: 4,
+                            elevation: 2,
+                        }}
+                    >
+                        <View
+                            style={{
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: 8,
+                            }}
+                        >
                             <View>
-                                <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>Pemasukan Terbaru</Text>
-                                <Text style={{ fontSize: 12, color: '#6B7280' }}>Aktivitas pemasukan terkini.</Text>
+                                <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 2 }}>
+                                    Pemasukan Terbaru
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                    Aktivitas pemasukan terkini.
+                                </Text>
                             </View>
-                            <TouchableOpacity onPress={() => router.replace('/(tabs)/income')} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#16A34A' }}>
-                                <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>Lihat Semua</Text>
+
+                            <TouchableOpacity
+                                onPress={() => router.replace('/(tabs)/income')}
+                                style={{
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 8,
+                                    borderRadius: 999,
+                                    backgroundColor: '#16A34A',
+                                }}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>
+                                    Lihat semua
+                                </Text>
                             </TouchableOpacity>
                         </View>
 
@@ -881,8 +1005,44 @@ export default function Dashboard() {
                         }
                     </View >
                 </View >
-            </ScrollView >
+                {/* Sidebar slide dari kiri */}
+                {
+                    openMenu && (
+                        <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.3)' }}>
+                            <Animated.View style={{ width: '70%', backgroundColor: '#FFFFFF', paddingTop: 50, paddingHorizontal: 16, transform: [{ translateX: slideX }] }}>
+                                <View style={{ alignItems: 'center', marginBottom: 32 }}>
+                                    <View style={{ width: 80, height: 80, borderRadius: 999, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                                        <Text style={{ fontSize: 32, fontWeight: '700', color: '#7C3AED' }}>{initial}</Text>
+                                    </View>
+                                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>{userName}</Text>
+                                </View>
 
+                                {[
+                                    { label: 'Dashboard', path: '/(tabs)/dashboard', icon: 'grid-outline' },
+                                    { label: 'Income', path: '/(tabs)/income', icon: 'wallet-outline' },
+                                    { label: 'Expense', path: '/(tabs)/expense', icon: 'receipt-outline' },
+                    
+                                    { label: 'Cicilan', path: '/(tabs)/installment', icon: 'layers-outline' },
+                                ].map((item) => (
+                                    <TouchableOpacity key={item.label} onPress={() => handleNavigate(item.path)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
+                                        <Ionicons name={item.icon as any} size={20} color="#4B5563" style={{ marginRight: 12 }} />
+                                        <Text style={{ fontSize: 15, color: '#111827' }}>{item.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+
+                                <View style={{ height: 1, backgroundColor: '#E5E7EB', marginVertical: 16 }} />
+
+                                <TouchableOpacity onPress={handleLogout} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, backgroundColor: '#FEE2E2', borderRadius: 10, paddingHorizontal: 10 }}>
+                                    <Ionicons name="log-out-outline" size={20} color="#DC2626" style={{ marginRight: 10 }} />
+                                    <Text style={{ fontSize: 15, color: '#DC2626', fontWeight: '600' }}>Logout</Text>
+                                </TouchableOpacity>
+                            </Animated.View>
+
+                            <Pressable style={{ flex: 1 }} onPress={closeDrawer} />
+                        </View>
+                    )
+                }
+            </ScrollView>
             {/* Modal Analisis Kategori */}
             {
                 selectedCategory && modalType && (
@@ -958,43 +1118,6 @@ export default function Dashboard() {
                 )
             }
 
-            {/* Sidebar slide dari kiri */}
-            {
-                openMenu && (
-                    <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.3)' }}>
-                        <Animated.View style={{ width: '70%', backgroundColor: '#FFFFFF', paddingTop: 50, paddingHorizontal: 16, transform: [{ translateX: slideX }] }}>
-                            <View style={{ alignItems: 'center', marginBottom: 32 }}>
-                                <View style={{ width: 80, height: 80, borderRadius: 999, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                                    <Text style={{ fontSize: 32, fontWeight: '700', color: '#7C3AED' }}>{initial}</Text>
-                                </View>
-                                <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>{userName}</Text>
-                            </View>
-
-                            {[
-                                { label: 'Dashboard', path: '/(tabs)/dashboard', icon: 'grid-outline' },
-                                { label: 'Income', path: '/(tabs)/income', icon: 'wallet-outline' },
-                                { label: 'Expense', path: '/(tabs)/expense', icon: 'receipt-outline' },
-                                { label: 'Recommendation', path: '/recommended', icon: 'sparkles-outline' },
-                                { label: 'Cicilan', path: '/(tabs)/installment', icon: 'layers-outline' },
-                            ].map((item) => (
-                                <TouchableOpacity key={item.label} onPress={() => handleNavigate(item.path)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
-                                    <Ionicons name={item.icon as any} size={20} color="#4B5563" style={{ marginRight: 12 }} />
-                                    <Text style={{ fontSize: 15, color: '#111827' }}>{item.label}</Text>
-                                </TouchableOpacity>
-                            ))}
-
-                            <View style={{ height: 1, backgroundColor: '#E5E7EB', marginVertical: 16 }} />
-
-                            <TouchableOpacity onPress={handleLogout} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, backgroundColor: '#FEE2E2', borderRadius: 10, paddingHorizontal: 10 }}>
-                                <Ionicons name="log-out-outline" size={20} color="#DC2626" style={{ marginRight: 10 }} />
-                                <Text style={{ fontSize: 15, color: '#DC2626', fontWeight: '600' }}>Logout</Text>
-                            </TouchableOpacity>
-                        </Animated.View>
-
-                        <Pressable style={{ flex: 1 }} onPress={closeDrawer} />
-                    </View>
-                )
-            }
         </View >
     );
 }
